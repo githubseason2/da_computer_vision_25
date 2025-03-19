@@ -12,7 +12,8 @@ gray_img = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
 tmp = np.stack( (gray_img, gray_img, gray_img), axis=2)
 both_imgs = np.hstack((img, tmp))
 
-cv.imshow(both_imgs)
+cv.namedWindow('img')
+cv.imshow('img', both_imgs)
 
 cv.waitKey()
 cv.destroyAllWindows()
