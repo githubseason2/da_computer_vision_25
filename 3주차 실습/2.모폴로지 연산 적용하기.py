@@ -20,7 +20,9 @@ opening = cv.morphologyEx(binary, cv.MORPH_OPEN, kernel)
 closing = cv.morphologyEx(binary, cv.MORPH_CLOSE, kernel)
 
 result = np.hstack([binary, dilation, erosion, opening, closing])
-result_bgr=cv.cvtColor(result, cv.COLOR_GRAY2BGR)
-cv.imshow("morphology", result)
+#result_bgr=cv.cvtColor(result, cv.COLOR_GRAY2BGR)
+rows, cols = result.shape[:2]
+resized_result = cv.resize(result, (int(cols * 1/4), int(rows * 1/4)))
+cv.imshow("morphology", resized_result)
 cv.waitKey(0)
 cv.destroyAllWindows()
