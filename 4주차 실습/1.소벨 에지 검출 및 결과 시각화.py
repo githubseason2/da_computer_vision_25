@@ -7,12 +7,12 @@ if(img is None):
     exit()
 gray=cv.cvtColor(img,cv.COLOR_BGR2GRAY)
 
-grad_x=cv.Sobel(gray,cv.CV_64F,1,0,ksize=3) # 소벨 연산자 적용
+grad_x=cv.Sobel(gray,cv.CV_64F,1,0,ksize=3)
 grad_y=cv.Sobel(gray,cv.CV_64F,0,1,ksize=3)
 
-edge_strength=cv.magnitude(grad_x, grad_y) # 에지 강도 계산
+edge_strength=cv.magnitude(grad_x, grad_y)
 
-sobel_x=cv.convertScaleAbs(grad_x)  # 절대값을 취해 양수 영상으로 변환
+sobel_x=cv.convertScaleAbs(grad_x)
 sobel_y=cv.convertScaleAbs(grad_y)
 edge_strength_visual=cv.convertScaleAbs(edge_strength)
 
@@ -25,12 +25,12 @@ plt.axis('off')
 
 plt.subplot(2, 2, 2)
 plt.title('Sobel X')
-plt.imshow(edge_strength_visual, cmap='gray')
+plt.imshow(sobel_x, cmap='gray')
 plt.axis('off')
 
 plt.subplot(2, 2, 3)
 plt.title('Sobel Y')
-plt.imshow(edge_strength_visual, cmap='gray')
+plt.imshow(sobel_y, cmap='gray')
 plt.axis('off')
 
 
