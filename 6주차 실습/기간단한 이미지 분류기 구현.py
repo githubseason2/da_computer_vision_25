@@ -33,7 +33,7 @@ model.compile(optimizer='adam',
               metrics=['accuracy'])
 
 # 5. 모델 훈련
-model.fit(x_train, y_train, epochs=5, batch_size=64, validation_split=0.1)
+model.fit(x_train, y_train, epochs=5, batch_size=64)
 
 # 6. 모델 평가
 loss, accuracy = model.evaluate(x_test, y_test)
