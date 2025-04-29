@@ -1,75 +1,107 @@
-import numpy as np
 import cv2 as cv
+import numpy as np
 import sys
 
-path="C:/Users/SK/Downloads"
+YOLO_PATH = "C:/Users/SK/Downloads"
+SORT_PATH = "C:/Users/SK/Documents/GitHub/Sort/sort"
+
+sys.path.append(SORT_PATH)
+from sort import Sort
+
+
 def construct_yolo_v3():
-    f = open(path+'/coco.names', 'r')
-    class_names = [line.strip() for line in f.readlines()]
-    
-    model = cv.dnn.readNet(path+'/yolov3.weights', path+'/yolov3.cfg')
-    layer_names = model.getLayerNames()
-    out_layers = [layer_names[i - 1] for i in model.getUnconnectedOutLayers()]
-    
-    return model, out_layers, class_names
-def yolo_detect(img, yolo_model, out_layers):
-    height, width = img.shape[0], img.shape[1]
-    test_img = cv.dnn.blobFromImage(img, 1.0/256, (448, 448), (0, 0, 0), swapRB=True)
+    with open(f"{YOLO_PATH}/coco.names", 'r') as f:
+        class_names = [line.strip() for line in f.readlines()]
 
-    yolo_model.setInput(test_img)
-    output3 = yolo_model.forward(out_layers)
+    net = cv.dnn.readNet(f"{YOLO_PATH}/yolov3.weights", f"{YOLO_PATH}/yolov3.cfg")
+    layer_names = net.getLayerNames()
+    out_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
+    return net, out_layers, class_names
 
-    box, conf, id_ = [], [], []
 
-    for output in output3:
-        for vec85 in output:
-            scores = vec85[5:]
+def yolo_detect(img, model, out_layers, conf_threshold=0.5, nms_threshold=0.4):
+    height, width = img.shape[:2]
+    blob = cv.dnn.blobFromImage(img, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+    model.setInput(blob)
+    outputs = model.forward(out_layers)
+
+    boxes, confidences, class_ids = [], [], []
+
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
             class_id = np.argmax(scores)
             confidence = scores[class_id]
+            if confidence > conf_threshold:
+                center_x, center_y = int(detection[0] * width), int(detection[1] * height)
+                w, h = int(detection[2] * width), int(detection[3] * height)
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+                boxes.append([x, y, x + w, y + h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
 
-            if confidence > 0.5:
-                centerx, centery = int(vec85[0]*width), int(vec85[1]*height)
-                w, h = int(vec85[2]*width), int(vec85[3]*height)
-                x, y = int(centerx - w/2), int(centery - h/2)
+    indices = cv.dnn.NMSBoxes(boxes, confidences, conf_threshold, nms_threshold)
 
-                box.append([x, y, x+w, y+h])
-                conf.append(float(confidence))
-                id_.append(class_id)
+    if isinstance(indices, tuple):
+        indices = indices[0] if len(indices) > 0 else []
 
-    ind = cv.dnn.NMSBoxes(box, conf, 0.5, 0.4)
-    objects = [box[i] + [conf[i]] + [id_[i]] for i in range(len(box)) if i in ind]
+    indices = np.array(indices).flatten() if len(indices) > 0 else []
 
-    return objects
+    results = []
+    for i in indices:
+        x1, y1, x2, y2 = boxes[i]
+        results.append([x1, y1, x2, y2, confidences[i], class_ids[i]])
+    return results
 
-model,out_layers,class_names=construct_yolo_v3()  # YOLO 모델 생성
-colors=np.random.uniform(0,255,size=(100,3))      # 100개 색으로 트랙 구분
-sys.path.append('C:/Users/SK/Documents/GitHub/Sort')
-from sort import sort         # sort.py 모듈 불러옴
-sort=Sort()                   # Sort 클래스로 sort 객체 생성
 
-cap=cv.VideoCapture(0,cv.CAP_DSHOW)
+def try_open_camera():
+    backends = [cv.CAP_MSMF, cv.CAP_ANY, cv.CAP_DSHOW]
+    for backend in backends:
+        for idx in range(5):
+            cap = cv.VideoCapture(idx, backend)
+            if cap.isOpened():
+                print(f"카메라 인식 성공: index {idx}, backend {backend}")
+                return cap
+            cap.release()
+    print("카메라 열기 실패: 모든 백엔드 및 인덱스 시도 실패")
+    return None
 
-while True:
-    ret,frame=cap.read()
-    if not ret: sys.exit('프레임 획득에 실패하여 루프를 나갑니다.')
 
-    res=yolo_detect(frame,model,out_layers)  
-    persons=[res[i] for i in range(len(res)) if res[i][5]==0]  # 부류 0은 사람
+def main():
+    model, out_layers, class_names = construct_yolo_v3()
+    tracker = Sort()
+    colors = np.random.uniform(0, 255, size=(100, 3))
 
-    if len(persons)==0:
-        tracks=sort.update()
-    else:
-        tracks=sort.update(np.array(persons))
+    cap = try_open_camera()
+    if cap is None:
+        sys.exit("카메라 열기 실패로 프로그램 종료")
 
-    for i in range(len(tracks)):
-        x1,y1,x2,y2,track_id=tracks[i].astype(int)
-        cv.rectangle(frame,(x1,y1),(x2,y2),colors[track_id],2)
-        cv.putText(frame,str(track_id),(x1+10,y1+40),cv.FONT_HERSHEY_PLAIN,3,colors[track_id],2)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("프레임 수신 실패")
+            break
 
-    cv.imshow('Person tracking by SORT',frame)
+        detections = yolo_detect(frame, model, out_layers)
+        persons = [d for d in detections if d[5] == 0]  # class_id 0: person
 
-    key=cv.waitKey(1)
-    if key==ord('q'): break
+        dets = np.array([[*d[:4], d[4]] for d in persons]) if persons else np.empty((0, 5))
+        tracks = tracker.update(dets)
 
-cap.release()
-cv.destroyAllWindows()
+        for d in tracks.astype(int):
+            x1, y1, x2, y2, track_id = d
+            color = colors[track_id % 100]
+            cv.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv.putText(frame, f"ID {track_id}", (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        cv.imshow("SORT Person Tracking", frame)
+        if cv.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
